@@ -1,0 +1,16 @@
+{
+  "name": "enaml-intellisense",
+  "displayName": "Enaml Syntax Highlighting",
+  "description": "Syntax highlighting and editing support for Enaml and Enaml-Web.",
+  "version": "0.1.0",
+  "publisher": "enaml-community",
+  "license": "BSD-3-Clause",
+  "repository": {"type": "git", "url": "https://github.com/harish-hyperDev/vscode-enaml-intellisense"},
+  "engines": {"vscode": "^1.85.0"},
+  "categories": ["Programming Languages"],
+  "keywords": ["enaml", "enaml-web", "syntax", "vscodium"],
+  "contributes": {
+    "languages": [{"id": "enaml", "aliases": ["Enaml", "Enaml Web", "enaml"], "extensions": [".enaml"], "configuration": "./language-configuration.json"}],
+    "grammars": [{"language": "enaml", "scopeName": "source.enaml", "path": "./syntaxes/enaml.tmLanguage.json"}]
+  }
+}
