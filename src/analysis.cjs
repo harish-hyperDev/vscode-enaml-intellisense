@@ -279,25 +279,25 @@ class Project {
       while (scope && scope.symbol?.kind !== Kind.Class) scope = scope.parent;
       if (scope) return this.member(scope.symbol, name, seen);
     }
-    if (symbol.target) {
-      const target = this.resolveChain(doc, symbol.target.split('.'), symbol.scope);
+  if (symbol.target) {
+    const target = this.resolveChain(doc, symbol.target.split('.'), symbol.scope, seen);
       if (target) return this.member(target, name, seen);
     }
     const local = doc.symbols.find(s => s.scope === symbol.inner && s.name === name && !s.anonymous);
     if (local && !local.binding) return local;
-    if (symbol.type) {
-      const type = this.resolveChain(doc, symbol.type.split('.'), symbol.scope);
+  if (symbol.type) {
+    const type = this.resolveChain(doc, symbol.type.split('.'), symbol.scope, seen);
       if (type) { const found = this.member(type, name, seen); if (found) return found; }
     }
-    for (const base of symbol.bases || []) {
-      const type = this.resolveChain(doc, base.split('.'), symbol.scope);
+  for (const base of symbol.bases || []) {
+    const type = this.resolveChain(doc, base.split('.'), symbol.scope, seen);
       if (type) { const found = this.member(type, name, seen); if (found) return found; }
     }
     return local || null;
   }
-  resolveChain(doc, names, scope) {
+resolveChain(doc, names, scope, seen = new Set()) {
     let symbol = this.lookup(doc, names[0], scope);
-    for (const name of names.slice(1)) symbol = this.member(symbol, name);
+for (const name of names.slice(1)) symbol = this.member(symbol, name, seen);
     return symbol;
   }
   at(doc, position) {

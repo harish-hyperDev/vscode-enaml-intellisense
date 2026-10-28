@@ -2,7 +2,7 @@
   "name": "enaml-intellisense",
   "displayName": "Enaml IntelliSense",
   "description": "Enaml and Enaml-Web language support with navigation, completion and diagnostics.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "enaml-community",
   "license": "BSD-3-Clause",
   "repository": {

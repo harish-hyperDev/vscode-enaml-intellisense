@@ -32,7 +32,7 @@ connection.onInitialize(params => {
     completionProvider: { triggerCharacters: ['.'] },
     signatureHelpProvider: { triggerCharacters: ['(', ','] },
     workspace: { workspaceFolders: { supported: true, changeNotifications: true } }
-  }, serverInfo: { name: 'Enaml Language Server', version: '0.2.0' } };
+  }, serverInfo: { name: 'Enaml Language Server', version: '0.2.1' } };
 });
 
 connection.onInitialized(async () => {
