@@ -1,16 +1,92 @@
 {
   "name": "enaml-intellisense",
-  "displayName": "Enaml Syntax Highlighting",
-  "description": "Syntax highlighting and editing support for Enaml and Enaml-Web.",
-  "version": "0.1.0",
+  "displayName": "Enaml IntelliSense",
+  "description": "Enaml and Enaml-Web language support with navigation, completion and diagnostics.",
+  "version": "0.2.0",
   "publisher": "enaml-community",
   "license": "BSD-3-Clause",
-  "repository": {"type": "git", "url": "https://github.com/harish-hyperDev/vscode-enaml-intellisense"},
-  "engines": {"vscode": "^1.85.0"},
-  "categories": ["Programming Languages"],
-  "keywords": ["enaml", "enaml-web", "syntax", "vscodium"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harish-hyperDev/vscode-enaml-intellisense"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "enaml",
+    "enaml-web",
+    "syntax",
+    "vscodium"
+  ],
   "contributes": {
-    "languages": [{"id": "enaml", "aliases": ["Enaml", "Enaml Web", "enaml"], "extensions": [".enaml"], "configuration": "./language-configuration.json"}],
-    "grammars": [{"language": "enaml", "scopeName": "source.enaml", "path": "./syntaxes/enaml.tmLanguage.json"}]
+    "languages": [
+      {
+        "id": "enaml",
+        "aliases": [
+          "Enaml",
+          "Enaml Web",
+          "enaml"
+        ],
+        "extensions": [
+          ".enaml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "enaml",
+        "scopeName": "source.enaml",
+        "path": "./syntaxes/enaml.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Enaml",
+      "properties": {
+        "enaml.languageServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Enaml language intelligence. Reload the window after changing this setting."
+        },
+        "enaml.sourcePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional Python/Enaml import roots, such as project src directories or virtual environment site-packages. Relative paths are resolved against workspace folders."
+        },
+        "enaml.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report structural Enaml syntax diagnostics."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "npm run build && node --test test/*.test.cjs",
+    "package": "vsce package",
+    "vscode:prepublish": "npm test",
+    "build": "node scripts/build.cjs"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.2.0",
+    "esbuild": "^0.25.0"
+  },
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onLanguage:enaml"
+  ],
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-uri": "^3.1.0"
   }
 }

@@ -1,0 +1,22 @@
+from web.components.api import Html, Head, Title, Body, H1, Ul, Li
+from enaml.core.api import Looper
+from models import Greeting
+
+
+enamldef Index(Html): page:
+    attr heading: str = "Hello from Enaml Web"
+    attr greeting = Greeting()
+    alias content: items
+
+    Head:
+        Title:
+            text << page.heading
+    Body: # HTML components use normal Enaml syntax
+        H1:
+            text << page.greeting.render(page.heading)
+        Ul: items:
+            Looper:
+                iterable = range(3)
+                Li:
+                    text = str(loop.item)
+                    style = 'color: blue' if loop.index & 1 else ''
