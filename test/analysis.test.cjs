@@ -151,6 +151,16 @@ test('diagnostics ignore delimiters in strings/comments and catch structural mis
   assert.ok(bad.issues.some(i => i.message.includes('Unterminated string')));
 });
 
+test('Enaml diagnostics flag unresolved expression names and invalid indentation', t => {
+  const { project, uri } = fixture(t, {});
+  const doc = project.update(uri('view.enaml'), 'enamldef View(Html): view:\n  attr title: str\n    text << tittle\n  result = rendeer(title)\n  not_a_function()\n');
+  const messages = project.diagnostics(doc).map(issue => issue.message);
+  assert.ok(messages.includes("Unknown name 'tittle'."));
+  assert.ok(messages.includes("Unknown name 'rendeer'."));
+  assert.ok(messages.includes("Unknown name 'not_a_function'."));
+  assert.ok(messages.some(message => message.includes('Unexpected indentation')));
+});
+
 test('strings and comments never resolve references, including UTF-16 positions', t => {
   const { project, uri } = fixture(t, {});
   const doc = project.update(uri('view.enaml'), 'enamldef View(Html):\n    attr title: str\n    text = "😀 title" # title\n    value << title\n');

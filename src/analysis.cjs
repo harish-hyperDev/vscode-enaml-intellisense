@@ -7,12 +7,14 @@ const Kind = { Module: 2, Class: 5, Method: 6, Property: 7, Function: 12, Variab
 const ignored = new Set(['.git', '.venv', 'venv', 'env', 'node_modules', '__pycache__', 'dist', 'build', '.tox']);
 const keywords = new Set(('enamldef template func attr event const alias class def if elif else for while try except finally with as return yield pass break continue import from in is not and or lambda async await raise assert del global nonlocal match case True False None').split(' '));
 const identifier = /^[A-Za-z_]\w*$/;
+const builtins = new Set(('abs all any bool bytes chr dict enumerate filter float frozenset getattr hasattr int isinstance iter len list map max min next object print range repr reversed round set slice sorted str sum tuple type zip self cls').split(' '));
 
 function scan(text) {
   const chars = text.split('');
   const tokens = [];
   const brackets = [];
   const issues = [];
+  const strings = [];
   let i = 0;
   const blank = (start, end) => { for (let p = start; p < end; p++) if (chars[p] !== '\n' && chars[p] !== '\r') chars[p] = ' '; };
   while (i < text.length) {
@@ -32,6 +34,7 @@ function scan(text) {
         i++;
       }
       i = Math.min(i, text.length);
+      strings.push({ start, end: i });
       if (!closed) issues.push({ start, end: start + quote.length, message: 'Unterminated string literal.' });
       blank(start, i);
     } else if (/[A-Za-z_]/.test(text[i])) {
@@ -54,7 +57,7 @@ function scan(text) {
     }
   }
   for (const b of brackets) issues.push({ start: b.start, end: b.start + 1, message: `Unclosed delimiter '${b.ch}'.` });
-  return { mask: chars.join(''), tokens, issues };
+  return { mask: chars.join(''), tokens, issues, strings };
 }
 
 function analyze(uri, text) {
@@ -68,11 +71,13 @@ function analyze(uri, text) {
   };
   const range = (start, end) => ({ start: position(start), end: position(end) });
   const root = { parent: null, symbol: null, indent: -1, start: 0, end: text.length, children: [] };
-  const scopes = [root], stack = [root], symbols = [], stars = [];
+  const scopes = [root], stack = [root], symbols = [], stars = [], scopeIndex = new Map();
   let depth = 0, importUntil = -1;
   function add(name, kind, start, scope, extra = {}) {
     const symbol = { name, kind, uri, start, end: start + name.length, scope, detail: '', ...extra };
     symbols.push(symbol);
+    if (!scopeIndex.has(scope)) scopeIndex.set(scope, new Map());
+    if (!scopeIndex.get(scope).has(name)) scopeIndex.get(scope).set(name, symbol);
     return symbol;
   }
   function container(symbol, indent, start) {
@@ -85,7 +90,7 @@ function analyze(uri, text) {
   const lines = scanned.mask.split('\n');
   for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
     const line = lines[lineNumber], start = offsets[lineNumber];
-    const indentText = line.match(/^\s*/)[0];
+    const indentText = line.match(/^[ \t]*/)[0];
     const indent = [...indentText].reduce((n, c) => c === '\t' ? n + 8 - n % 8 : n + 1, 0);
     if (line.trim() && depth === 0) {
       while (stack.length > 1 && indent <= stack.at(-1).indent) stack.pop().end = start;
@@ -95,6 +100,13 @@ function analyze(uri, text) {
     const base = start + indentText.length;
     const body = line.trimStart();
     let match;
+    // Python loop/context targets are visible in the enclosing function scope.
+    const loop = /^(?:async\s+)?for\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+in\b/.exec(body);
+    const contextName = /^(?:with\b.*|except\b.*?)\bas\s+([A-Za-z_]\w*)\s*:/.exec(body);
+    if (loop || contextName) {
+      const targets = loop ? loop[1].split(',').map(s => s.trim()) : [contextName[1]];
+      for (const name of targets) if (!scopeIndex.get(scope)?.has(name)) add(name, Kind.Variable, base + body.indexOf(name, loop ? body.indexOf('for') + 3 : body.lastIndexOf('as') + 2), scope, { detail: `local ${name}` });
+    }
     if (start <= importUntil) {
       // Continuation of an import already indexed on its first line.
     } else if ((match = /^(?:from\s+([.\w]+)\s+import\s+|import\s+)/.exec(body))) {
@@ -182,7 +194,7 @@ function analyze(uri, text) {
     } else if ((match = /^(?:self\.)?([A-Za-z_]\w*)(?:\s*:\s*([\w.]+))?\s*=(?!=)\s*(?:([\w.]+)\s*\()?/.exec(body))) {
       const owner = body.startsWith('self.') ? scopes.findLast(s => s.symbol?.kind === Kind.Class && s.start <= start && s.end >= start) || scope : scope;
       // Reassignments and component bindings are references to the first declaration.
-      if (!symbols.some(s => s.name === match[1] && s.scope === owner)) {
+      if (!scopeIndex.get(owner)?.has(match[1])) {
         const target = /=\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*$/.exec(body)?.[1];
         const binding = owner.symbol?.flavor === 'enamldef' || Boolean(owner.symbol?.type);
         add(match[1], Kind.Variable, base + (body.startsWith('self.') ? 5 : 0), owner, { detail, type: match[2] || match[3], target, binding });
@@ -192,9 +204,30 @@ function analyze(uri, text) {
     }
     for (const ch of line) { if ('([{'.includes(ch)) depth++; if (')]}'.includes(ch)) depth = Math.max(0, depth - 1); }
   }
-  return { uri, text, ...scanned, root, scopes, symbols, stars, offsets, position, range,
+  const layout = require('./whitespace.cjs').layout(text, scanned, offsets);
+  scanned.issues.push(...layout.issues);
+  const byScope = scopeIndex;
+  const declaredAt = new Map();
+  for (const symbol of symbols) {
+    if (!symbol.anonymous) declaredAt.set(symbol.start, symbol);
+    if (symbol.imported) {
+      let low = 0, high = scanned.tokens.length;
+      while (low < high) { const mid = (low + high) >>> 1; if (scanned.tokens[mid].start < symbol.importStart) low = mid + 1; else high = mid; }
+      for (let i = low; i < scanned.tokens.length && scanned.tokens[i].end <= symbol.importEnd; i++) declaredAt.set(scanned.tokens[i].start, symbol);
+    }
+  }
+  return { uri, text, ...scanned, root, scopes, symbols, stars, offsets, position, range, byScope, declaredAt, structuralLines: layout.structural,
     offset: pos => Math.min(text.length, (offsets[pos.line] ?? text.length) + pos.character),
-    scopeAt: offset => scopes.filter(s => s.start <= offset && s.end >= offset).at(-1) || root };
+    scopeAt: offset => {
+      let scope = root;
+      for (;;) {
+        let low = 0, high = scope.children.length;
+        while (low < high) { const mid = (low + high) >>> 1; if (scope.children[mid].start <= offset) low = mid + 1; else high = mid; }
+        const child = scope.children[low - 1];
+        if (!child || child.end < offset) return scope;
+        scope = child;
+      }
+    } };
 }
 
 class Project {
@@ -231,8 +264,8 @@ class Project {
   }
   lookup(doc, name, scope, seen = new Set()) {
     for (let current = scope; current; current = current.parent) {
-      const local = doc.symbols.find(s => s.scope === current && s.name === name && !s.anonymous);
-      if (local) return local;
+      const local = doc.byScope.get(current)?.get(name);
+      if (local && !local.anonymous) return local;
       if ((name === 'self' || name === 'cls') && current.symbol?.kind === Kind.Class) return current.symbol;
       // A Python method's self parameter carries its enclosing class implicitly.
     }
@@ -248,7 +281,7 @@ class Project {
   unwrap(symbol, seen = new Set()) {
     if (!symbol?.imported) return symbol;
     const key = `${symbol.uri}:${symbol.start}`;
-    if (seen.has(key)) return null;
+    if (seen.has(key) || seen.size > 128) return null;
     seen.add(key);
     const target = this.module(symbol.uri, symbol.imported.module);
     if (!target) return symbol;
@@ -262,7 +295,7 @@ class Project {
     symbol = this.unwrap(symbol);
     if (!symbol) return null;
     const key = `${symbol.uri}:${symbol.start}:${name}`;
-    if (seen.has(key)) return null;
+    if (seen.has(key) || seen.size > 128) return null;
     seen.add(key);
     if (symbol.moduleDoc) {
       const local = this.lookup(symbol.moduleDoc, name, symbol.moduleDoc.root);
@@ -283,7 +316,8 @@ class Project {
     const target = this.resolveChain(doc, symbol.target.split('.'), symbol.scope, seen);
       if (target) return this.member(target, name, seen);
     }
-    const local = doc.symbols.find(s => s.scope === symbol.inner && s.name === name && !s.anonymous);
+    const candidate = doc.byScope.get(symbol.inner)?.get(name);
+    const local = candidate && !candidate.anonymous ? candidate : null;
     if (local && !local.binding) return local;
   if (symbol.type) {
     const type = this.resolveChain(doc, symbol.type.split('.'), symbol.scope, seen);
@@ -302,10 +336,20 @@ for (const name of names.slice(1)) symbol = this.member(symbol, name, seen);
   }
   at(doc, position) {
     const offset = doc.offset(position);
-    const tokenIndex = doc.tokens.findIndex(t => identifier.test(t.value) && t.start <= offset && offset < t.end);
-    if (tokenIndex < 0) return null;
+    let low = 0, high = doc.tokens.length;
+    while (low < high) { const mid = (low + high) >>> 1; if (doc.tokens[mid].end <= offset) low = mid + 1; else high = mid; }
+    const tokenIndex = low;
+    if (!doc.tokens[tokenIndex] || !identifier.test(doc.tokens[tokenIndex].value) || doc.tokens[tokenIndex].start > offset) return null;
     const token = doc.tokens[tokenIndex];
-    const declared = doc.symbols.find(s => !s.anonymous && (s.start === token.start || s.importStart <= token.start && token.end <= s.importEnd));
+    const callOffset = require('./call-sites.cjs').keywordCalls(doc).get(token.start);
+    if (callOffset != null) {
+      let callable = this.at(doc, doc.position(callOffset));
+      if (callable?.kind === Kind.Class) callable = this.unwrap(this.member(callable, '__init__'));
+      const target = callable && this.load(callable.uri);
+      const parameter = target?.byScope.get(callable.inner)?.get(token.value);
+      return parameter?.parameter ? parameter : null;
+    }
+    const declared = doc.declaredAt.get(token.start);
     if (declared) {
       const target = declared.binding && declared.scope.symbol ? this.member(declared.scope.symbol, declared.name) : null;
       return this.unwrap(target || declared);
@@ -326,6 +370,7 @@ for (const name of names.slice(1)) symbol = this.member(symbol, name, seen);
     if (resolved?.binding && resolved.scope.symbol) resolved = this.member(resolved.scope.symbol, resolved.name) || resolved;
     return this.unwrap(resolved);
   }
+  diagnostics(doc, options) { return require('./intelligence.cjs').diagnostics(this, doc, options); }
   location(symbol) {
     if (!symbol) return null;
     const doc = symbol.moduleDoc || this.load(symbol.uri);
