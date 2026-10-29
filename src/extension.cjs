@@ -4,6 +4,10 @@ const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
 let client;
 async function activate(context) {
+  context.subscriptions.push(vscode.commands.registerCommand('enaml.showReferences', (uri, position, locations) =>
+    vscode.commands.executeCommand('editor.action.showReferences', vscode.Uri.parse(uri),
+      new vscode.Position(position.line, position.character), locations.map(location => new vscode.Location(vscode.Uri.parse(location.uri),
+        new vscode.Range(location.range.start.line, location.range.start.character, location.range.end.line, location.range.end.character))))));
   if (!vscode.workspace.getConfiguration('enaml').get('languageServer.enabled', true)) return;
   const module = context.asAbsolutePath(path.join('dist', 'server.cjs'));
   client = new LanguageClient('enaml', 'Enaml Language Server',

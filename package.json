@@ -62,12 +62,58 @@
         "enaml.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Report structural Enaml syntax diagnostics."
+          "description": "Report Enaml syntax, indentation and name diagnostics."
+        },
+        "enaml.diagnostics.syntax": {
+          "type": "boolean", "default": true, "description": "Check structural syntax and delimiters."
+        },
+        "enaml.diagnostics.indentation": {
+          "type": "boolean", "default": true, "description": "Check block indentation, including mixed tabs and spaces."
+        },
+        "enaml.diagnostics.unresolvedNames": {
+          "type": "boolean", "default": true, "description": "Report unknown names in statically analyzed expressions."
+        },
+        "enaml.diagnostics.unresolvedImports": {
+          "type": "boolean", "default": true, "description": "Warn when an import cannot be found in workspace roots or sourcePaths."
+        },
+        "enaml.diagnostics.unresolvedMembers": {
+          "type": "boolean", "default": false, "description": "Check members on known receivers. Dynamic framework attributes can require disabling this check."
+        },
+        "enaml.diagnostics.unresolvedTypes": {
+          "type": "boolean", "default": false, "description": "Check explicit annotations and base class names."
+        },
+        "enaml.diagnostics.duplicates": {
+          "type": "boolean", "default": true, "description": "Check repeated declarations in the same scope."
+        },
+        "enaml.diagnostics.unusedImports": {
+          "type": "boolean", "default": false, "description": "Warn about unused imports. Imports used for side effects may appear unused."
+        },
+        "enaml.diagnostics.bindings": {
+          "type": "boolean", "default": false, "description": "Check assignment bindings against fully resolved component declarations. Disable for dynamic properties."
+        },
+        "enaml.completion.snippets": {
+          "type": "boolean", "default": true, "description": "Suggest Enaml declaration and component snippets."
+        },
+        "enaml.completion.autoImports": {
+          "type": "boolean", "default": true, "description": "Suggest imports from workspace modules after typing at least two characters."
+        },
+        "enaml.formatting.enabled": {
+          "type": "boolean", "default": true, "description": "Enable conservative indentation and trailing whitespace formatting."
+        },
+        "enaml.semanticTokens.enabled": {
+          "type": "boolean", "default": true, "description": "Color resolved declarations and references by symbol kind."
+        },
+        "enaml.inlayHints.enabled": {
+          "type": "boolean", "default": false, "description": "Show inferred constructor types and parameter name hints."
+        },
+        "enaml.codeLens.enabled": {
+          "type": "boolean", "default": false, "description": "Show reference counts above classes and functions. Workspace scans run when a lens is resolved."
         }
       }
     }
   },
   "scripts": {
+    "benchmark": "node scripts/benchmark.cjs",
     "test": "npm run build && node --test test/*.test.cjs",
     "package": "vsce package",
     "vscode:prepublish": "npm test",

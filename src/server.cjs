@@ -5,6 +5,7 @@ const {
 const { TextDocument } = require('vscode-languageserver-textdocument');
 const { URI } = require('vscode-uri');
 const { Project, Kind, keywords } = require('./analysis.cjs');
+const editor = require('./editor-features.cjs');
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -21,6 +22,7 @@ connection.onInitialize(params => {
     .filter(f => URI.parse(f.uri).scheme === 'file').map(f => URI.parse(f.uri).fsPath);
   project.configure(folders);
   return { capabilities: {
+    ...editor.capabilities,
     textDocumentSync: TextDocumentSyncKind.Incremental,
     definitionProvider: true,
     referencesProvider: true,
@@ -53,13 +55,16 @@ connection.onDidChangeConfiguration(change => {
   project.configure(folders, settings.sourcePaths || []);
   for (const doc of documents.all()) publish(doc);
 });
-connection.onDidChangeWatchedFiles(change => { for (const file of change.changes) project.invalidate(file.uri); });
+connection.onDidChangeWatchedFiles(change => {
+  for (const file of change.changes) project.invalidate(file.uri);
+  for (const doc of documents.all()) publish(doc);
+});
 
 function publish(document) {
   const doc = project.update(document.uri, document.getText());
-  const diagnostics = settings.diagnostics?.enabled === false ? [] : doc.issues.slice(0, 100).map(issue => ({
-    range: doc.range(issue.start, issue.end), message: issue.message, severity: DiagnosticSeverity.Error,
-    source: 'enaml', code: 'structural-syntax'
+  const diagnostics = project.diagnostics(doc, settings.diagnostics).map(issue => ({
+    range: doc.range(issue.start, issue.end), message: issue.message, severity: issue.severity || DiagnosticSeverity.Error,
+    source: 'enaml', code: issue.code, ...(issue.tags ? { tags: issue.tags } : {}), ...(issue.data ? { data: issue.data } : {})
   }));
   connection.sendDiagnostics({ uri: document.uri, version: document.version, diagnostics });
 }
@@ -72,7 +77,8 @@ connection.onDefinition(params => project.location(symbolAt(params)));
 connection.onHover(params => {
   const symbol = symbolAt(params);
   if (!symbol) return null;
-  return { contents: { kind: 'markdown', value: '```enaml\n' + (symbol.detail || symbol.name).replace(/```/g, '') + '\n```' } };
+  const documentation = editor.documentation(project, symbol).replace(/[\\`*_{}\[\]<>]/g, '\\$&');
+  return { contents: { kind: 'markdown', value: '```enaml\n' + (symbol.detail || symbol.name).replace(/```/g, '') + '\n```' + (documentation ? '\n\n' + documentation : '') } };
 });
 
 function sameSymbol(a, b) {
@@ -172,7 +178,7 @@ function members(symbol, seen = new Set()) {
   for (const base of symbol.bases || []) result.push(...members(project.resolveChain(doc, base.split('.'), symbol.scope), seen));
   return result;
 }
-connection.onCompletion(params => {
+connection.onCompletion(async (params, cancellation) => {
   const doc = context(params);
   if (!doc) return [];
   const offset = doc.offset(params.position), scope = doc.scopeAt(offset);
@@ -197,6 +203,16 @@ connection.onCompletion(params => {
   for (const symbol of available) if (!unique.has(symbol.name)) unique.set(symbol.name,
     { label: symbol.name, kind: completionKind(symbol.kind), detail: symbol.detail });
   if (!member) for (const label of keywords) if (!unique.has(label)) unique.set(label, { label, kind: CompletionItemKind.Keyword });
+  if (!member && settings.completion?.snippets !== false) {
+    for (const [label, insertText] of editor.snippets) unique.set(label + ' snippet', { label, kind: CompletionItemKind.Snippet, insertText, insertTextFormat: 2, detail: 'Enaml snippet' });
+  }
+  if (!member && settings.completion?.autoImports !== false) {
+    const prefix = /[A-Za-z_]\w*$/.exec(before)?.[0];
+    for (const { symbol, module } of await editor.exportsFor(project, doc, prefix, cancellation)) {
+      if (unique.has(symbol.name)) continue;
+      unique.set(symbol.name, { label: symbol.name, kind: completionKind(symbol.kind), detail: `from ${module} import ${symbol.name}`, additionalTextEdits: [editor.importEdit(doc, module, symbol.name)] });
+    }
+  }
   return [...unique.values()];
 });
 
@@ -222,5 +238,6 @@ connection.onSignatureHelp(params => {
     activeSignature: 0, activeParameter: Math.min(activeParameter, Math.max(0, parameters.length - 1)) };
 });
 
+editor.install(connection, project, documents, () => settings);
 documents.listen(connection);
 connection.listen();
