@@ -56,10 +56,10 @@ policy prevents running `npm.ps1`.
 npm.cmd ci
 npm.cmd test
 npm.cmd run package
-codium --install-extension ./enaml-intellisense-0.2.1.vsix
+codium --install-extension ./enaml-intellisense-0.2.2.vsix
 ```
 
-For VS Code, use `code --install-extension ./enaml-intellisense-0.2.1.vsix`.
+For VS Code, use `code --install-extension ./enaml-intellisense-0.2.2.vsix`.
 Alternatively, select **Extensions → … → Install from VSIX…**, install the VSIX,
 and reload the editor window.
 
